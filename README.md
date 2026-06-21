@@ -8,7 +8,8 @@ It abstracts away boilerplate database operations (CRUD, simple querying, and in
 
 - **Generic Repository (`Storage[T]`)**: Simplifies database operations for any struct document model.
 - **MongoDB-Generated `_id` & Public `id`**: MongoDB automatically generates the database `_id` primary key, while the Go model's `ID` field maps to a separate BSON field (`id`), serving as the public identifier.
-- **Strict Query Security**: Enforces strict equality matching (`$eq`) on query fields to protect against NoSQL injection.
+- **Safe-by-Default ID Operations**: `Get`, `Exists`, `Update`, and `Delete` use strict equality (`$eq`) on the configured public ID field.
+- **Flexible Advanced Queries/Updates**: `Find`, `FindOne`, and `UpdateFields` accept caller-provided MongoDB documents for power-user scenarios.
 - **Robust Error Handling**: Automatically wraps errors using `fmt.Errorf` with `%w` for idiomatic error propagation.
 - **Zero-Dependency Core**: Free of dependencies on external config or error modules, making it completely reusable.
 
@@ -82,9 +83,31 @@ You can configure connection parameters (such as TLS) via environment variables 
 - `OWV_MONGODB_TLS`: Set to `true` to enable TLS communication by default.
 - `OWV_MONGODB_TLS_INSECURE`: Set to `true` to skip TLS certificate verification (useful for self-signed certificates in dev/staging environments).
 
+Security note:
+- Avoid `OWV_MONGODB_TLS_INSECURE=true` outside local development and controlled staging. Disabling certificate verification weakens transport security and can expose connections to man-in-the-middle attacks.
+
 For test execution, the test suite also reads credentials from:
 - `OWV_MONGODB_USERNAME`: The database user (defaults to `admin` in tests).
 - `OWV_MONGODB_PASSWORD`: The database password (defaults to `password` in tests).
+
+Production note:
+- Do not rely on test defaults in production. Use secret management and least-privilege MongoDB users.
+
+
+## Security Model
+
+This library provides both guarded convenience methods and advanced low-level methods.
+
+- Guarded methods: `Get`, `Exists`, `Update`, and `Delete` always match by public ID with strict equality (`$eq`).
+- Advanced methods: `Find`, `FindOne`, and `UpdateFields` pass through caller-provided MongoDB documents.
+
+If any part of a filter or update comes from user input, you must validate and constrain it before calling advanced methods.
+
+Recommended practices for untrusted input:
+- Prefer `QueryBuilder` for filter construction when possible.
+- Use field allowlists to restrict which fields can be queried or updated.
+- Use operator allowlists for updates (for example, allow `$set` and reject unsupported operators).
+- Never pass raw user JSON directly into MongoDB query/update documents.
 
 
 
@@ -123,16 +146,20 @@ if exists {
 retrieved.Name = "Jane Smith"
 updated, err := userStorage.Update(ctx, retrieved.ID, retrieved)
 
-// 5. UpdateFields (partial update using standard MongoDB update document)
+// 5. UpdateFields (advanced partial update using a MongoDB update document)
+// WARNING: Validate and constrain update operators/fields before passing user-influenced input.
 err = userStorage.UpdateFields(ctx, "user-1234", bson.M{"$set": bson.M{"email": "jane.smith@example.com"}})
 
 // 6. Delete
 err = userStorage.Delete(ctx, "user-1234")
 ```
 
-### 3. Generic Querying
+### 3. Generic Querying (Advanced)
 
 Use `Find` or `FindOne` to run custom queries:
+
+Warning:
+- These methods execute the provided filter as-is. Treat them as advanced APIs and validate/sanitize all untrusted input before use.
 
 ```go
 import "go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -153,6 +180,9 @@ user, err := userStorage.FindOne(ctx, bson.M{"email": "jane.smith@example.com"})
 ### 4. Fluent Query Construction (QueryBuilder)
 
 The library provides `QueryBuilder` to construct safe query filters fluently. It automatically validates inputs (rejecting empty strings, nil pointers, etc.) to defend against NoSQL injection, and supports merging operators for duplicate fields (e.g. `.Gt("age", 18).Lt("age", 30)` is merged to a single condition map).
+
+Important:
+- `QueryBuilder` validates structure and common unsafe input patterns, but your application should still enforce domain-specific allowlists (fields, operators, and acceptable value ranges) for user-controlled input.
 
 #### Basic Comparison Example
 ```go
