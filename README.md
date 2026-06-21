@@ -148,7 +148,56 @@ if err != nil {
 
 // Find a single document
 user, err := userStorage.FindOne(ctx, bson.M{"email": "jane.smith@example.com"})
-```### 4. Unique Index Management
+```
+
+### 4. Fluent Query Construction (QueryBuilder)
+
+The library provides `QueryBuilder` to construct safe query filters fluently. It automatically validates inputs (rejecting empty strings, nil pointers, etc.) to defend against NoSQL injection, and supports merging operators for duplicate fields (e.g. `.Gt("age", 18).Lt("age", 30)` is merged to a single condition map).
+
+#### Basic Comparison Example
+```go
+filter, err := storage.NewQueryBuilder().
+	Eq("status", "active").
+	Gt("age", 21).
+	Build() // Returns (bson.D, error)
+if err != nil {
+	log.Fatalf("Invalid query: %v", err)
+}
+
+users, err := userStorage.Find(ctx, filter)
+```
+
+#### Popular Operators Supported
+- **Comparison**: `Eq(field, val)`, `Ne(field, val)`, `Gt(field, val)`, `Gte(field, val)`, `Lt(field, val)`, `Lte(field, val)`
+- **Sets/Arrays**: `In(field, slice)`, `Nin(field, slice)`
+- **Element existence**: `Exists(field, bool)`
+- **Regular Expressions**: `Regex(field, pattern, options)` (validates pattern compiles)
+- **Nested Array Match**: `ElemMatch(field, subBuilder)` (runs sub-builder recursively)
+- **Logical Groupings**: `And(builders...)`, `Or(builders...)`
+
+#### Merging Operator Example
+```go
+// Automatically merges into a single condition map: {"age": {"$gt": 18, "$lt": 30}}
+filter, err := storage.NewQueryBuilder().
+	Gt("age", 18).
+	Lt("age", 30).
+	Build()
+```
+
+#### Logical Compound Example
+```go
+filter, err := storage.NewQueryBuilder().
+	Or(
+		storage.NewQueryBuilder().Eq("role", "admin"),
+		storage.NewQueryBuilder().And(
+			storage.NewQueryBuilder().Eq("role", "user"),
+			storage.NewQueryBuilder().Gte("score", 90),
+		),
+	).
+	Build()
+```
+
+### 5. Unique Index Management
 
 To guarantee O(1) query performance and enforce uniqueness on your public ID field at the database level, call `EnsureIndexes`:
 
@@ -159,7 +208,7 @@ if err := userStorage.EnsureIndexes(ctx); err != nil {
 }
 ```
 
-### 5. Transactions
+### 6. Transactions
 
 To execute multiple operations atomically across different collections or repositories, use `RunTransaction`:
 

@@ -95,6 +95,14 @@ opts := storage.DefaultFindOptions()  // Batch size: 100
 // Pass to find operations
 ```
 
+### 7. Fluent Query Building (QueryBuilder)
+
+Use `QueryBuilder` to construct query filters with built-in input validation:
+- Every operator method automatically validates parameters (rejects empty string, nil pointer, empty slices) to prevent NoSQL injection.
+- Call `.Build()` to get the `bson.D` query and check the validation error.
+- Call `.BuildMap()` to get `bson.M`.
+- Consecutive calls for the same field (e.g., `.Gt("age", 18).Lt("age", 30)`) are merged automatically.
+
 ## Testing
 
 Tests use Docker Compose for isolated MongoDB:
@@ -107,10 +115,11 @@ Tests use Docker Compose for isolated MongoDB:
 ## File Organization
 
 - `storage.go` – Core `Storage[T]` type and CRUD operations
+- `query_builder.go` – Fluent MongoDB query builder with validation and merging
 - `client.go` – MongoDB connection, transaction support, BSON registry
 - `errors.go` – Sentinel errors
 - `options.go` – Default MongoDB options
-- `test_helper.go`, `storage_test.go` – Test utilities and suite
+- `test_helper.go`, `storage_test.go`, `query_builder_test.go` – Test utilities and suites
 - `mongodb-compose.yml` – Docker test environment
 - `test.sh` – Bash test runner
 
