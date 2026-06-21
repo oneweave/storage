@@ -29,7 +29,7 @@ func NewStorage[T any](db *mongo.Database, collectionName string) *Storage[T] {
 	// Reflect to find ID field BSON name
 	var zero T
 	t := reflect.TypeOf(zero)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -210,7 +210,7 @@ func (s *Storage[T]) Find(ctx context.Context, filter interface{}, opts ...optio
 	if err != nil {
 		return nil, fmt.Errorf("failed to find documents: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var results []*T
 	for cursor.Next(ctx) {
